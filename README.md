@@ -50,6 +50,7 @@ The BigBroker project is a message broker built using the **Bulldog BigQueue** l
 1. **Multiple Nodes**:
    - Support high availability (HA) with multiple nodes.
    - Replicate the **consumer registry** across all nodes.
+   - Clients will connect to multiple nodes using **HAProxy**.
 
 2. **Queue Replication**:
    - Designate a **leader queue** for publishing and consumption.
@@ -114,6 +115,21 @@ The BigBroker project is a message broker built using the **Bulldog BigQueue** l
 
 ---
 
+## **Health and Monitoring**
+1. **Health URLs for Nodes**:
+   - Each node in the cluster should expose a health check endpoint (e.g., `/actuator/health`).
+   - These URLs will be used by **HAProxy** to monitor node health and distribute client requests accordingly.
+
+2. **Prometheus & Grafana Integration**:
+   - Expose Prometheus-compatible metrics endpoints:
+     - `/actuator/prometheus`: For collecting broker metrics, including queue metrics, throughput (TPS), replication status, and node health.
+   - Set up **Grafana dashboards** to visualize:
+     - Publisher TPS and Consumer TPS.
+     - Queue health and replication status.
+     - Node health and leader election status.
+
+---
+
 ## **Sample Client Project**
 1. **Purpose**:
    - Provide a reference implementation for interacting with the message broker.
@@ -130,7 +146,7 @@ The BigBroker project is a message broker built using the **Bulldog BigQueue** l
      - Demonstrate filtering based on header properties (e.g., `Priority`).
 
 3. **Implementation**:
-   - Written in **Java** using **HTTP/2** features.
+   - Written in **Java** using **HTTP/2** features and **Spring Boot** framework.
    - Utilize **Jackson** for JSON handling.
    - Include basic examples of:
      - Configuring a connection to the broker.
@@ -145,8 +161,56 @@ The BigBroker project is a message broker built using the **Bulldog BigQueue** l
 
 ---
 
-## **Implementation Notes**
-- Use **Jackson** for JSON handling.
-- Leverage **Apache ZooKeeper** for robust and fault-tolerant leader election.
-- Ensure lightweight, performant, and scalable design principles.
-- Provide a seamless user experience with an intuitive admin UI for management and monitoring.
+## **Docker Compose Setup**
+Provide a `docker-compose.yml` to easily test the broker cluster setup locally.
+
+### Example:
+```yaml
+version: "3.8"
+
+services:
+  zookeeper:
+    image: zookeeper:3.8
+    container_name: zookeeper
+    ports:
+      - "2181:2181"
+
+  broker1:
+    build: ./broker
+    container_name: broker1
+    environment:
+      - SPRING_PROFILES_ACTIVE=node1
+    ports:
+      - "8081:8080"
+      - "9091:9090" # Prometheus
+
+  broker2:
+    build: ./broker
+    container_name: broker2
+    environment:
+      - SPRING_PROFILES_ACTIVE=node2
+    ports:
+      - "8082:8080"
+      - "9092:9090" # Prometheus
+
+  haproxy:
+    image: haproxy:2.7
+    container_name: haproxy
+    volumes:
+      - ./haproxy.cfg:/usr/local/etc/haproxy/haproxy.cfg
+    ports:
+      - "80:80" # Load Balancer
+
+  prometheus:
+    image: prom/prometheus
+    container_name: prometheus
+    volumes:
+      - ./prometheus.yml:/etc/prometheus/prometheus.yml
+    ports:
+      - "9090:9090"
+
+  grafana:
+    image: grafana/grafana:latest
+    container_name: grafana
+    ports:
+      - "3000:3000"
